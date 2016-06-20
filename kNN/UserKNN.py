@@ -173,6 +173,16 @@ class UserKNN():
 
         self.__read_data_into_matrix__(rating_file_path)
 
+        self.global_mean = np.mean(self.user_item_matrix[np.nonzero(self.user_item_matrix)])
+
+        print 'Computing average rating of each user...'
+        # average rating for each user INDEX
+        self.user_mean_rating = {}
+        for u_idx in range(self.user_num):
+            # mean ratings of this item based on user-item index
+            avg = np.mean(self.user_item_matrix[u_idx, :][np.nonzero(self.user_item_matrix[u_idx, :])])
+            self.user_mean_rating[u_idx] = avg
+
 
     def __read_data_into_matrix__(self, file_path):
 
@@ -243,11 +253,24 @@ class UserKNN():
         return user_similars
 
 
-    def predict(self, user_id, movie_id, item_similar):
+    def predict(self, user_id, movie_id, user_similar):
         movie_index = self.movieId_to_idx[movie_id]
         user_index = self.idx_to_userId[user_id]
 
-        return predict_par(item_similar, movie_index, user_index, self.user_item_matrix, False)
+        # user_similar, userId, movie_index, userId_to_idx, user_item_matrix, idx_to_movieId, k, is_ranking):
+        rating = predict_par(user_similar, user_id, movie_index, self.userId_to_idx, self.user_item_matrix,
+                             self.idx_to_movieId, self.k, False)
+        if rating == 0:
+
+            # print 'This is average rating.'
+            user_mean_rate = self.user_mean_rating[user_index]
+
+            if user_mean_rate == 0:
+                return self.global_mean
+
+            return user_mean_rate
+
+        return rating
 
 
 

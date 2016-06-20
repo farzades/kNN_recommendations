@@ -179,6 +179,17 @@ class ItemKNN():
         # Creating item-user matrix
         self.__read_data_into_matrix__(rating_file_path)
 
+        self.global_mean = np.mean(self.item_user_matrix[np.nonzero(self.item_user_matrix)])
+
+        print 'Computing average rating of each user...'
+        # average rating for each user INDEX
+        self.user_mean_rating = {}
+        for u_idx in range(self.user_num):
+            # mean ratings of this item based on user-item index
+            # mean_rating_item = np.mean(self.item_user_matrix[movie_index][self.item_user_matrix[movie_index].nonzero()[0]])
+            avg = np.mean(self.item_user_matrix[:, u_idx][np.nonzero(self.item_user_matrix[:, u_idx])])
+            self.user_mean_rating[u_idx] = avg
+
 
 
     def __read_data_into_matrix__(self, file_path):
@@ -233,17 +244,21 @@ class ItemKNN():
         movie_index = self.movieId_to_idx[movie_id]
         user_index = self.movieId_to_idx[user_id]
 
-        print 'movie_index', movie_index
-        print 'user index', user_index
+        # print 'movie_index', movie_index
+        # print 'user index', user_index
 
         rating = predict_par(item_similar, movie_index, user_index, self.item_user_matrix, self.k, False)
         if rating == 0:
-            # mean ratings of this item based on user-item index
-            mean_rating_item = np.mean(self.item_user_matrix[movie_index][self.item_user_matrix[movie_index].nonzero()[0]])
 
             # print self.item_user_matrix[self.item_user_matrix[movie_index].nonzero()]
-            print 'This is average rating.'
-            return mean_rating_item
+            # print 'This is average rating.'
+            user_mean_rate = self.user_mean_rating[user_index]
+
+            if user_mean_rate == 0:
+                return self.global_mean
+
+            return user_mean_rate
+
         return rating
 
 
