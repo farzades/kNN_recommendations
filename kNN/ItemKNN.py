@@ -46,10 +46,11 @@ def find_neighbors_users_par(movie_index, item_similar, user_num, item_user_matr
     return nonzero_user_index
 
 
-def predict_par(item_similar, movie_index, user_index, item_user_matrix, k):
+def predict_par(item_similar, movie_index, user_index, item_user_matrix, k, is_ranking):
     sum_rates = 0.0
     sum_similarity = 0.0
     count_neighbors = 0
+    sum_rates_rank = 0
     for sim_list in item_similar[movie_index]:
         # sim_list = [[user_id, simVal], [...]]
         count_neighbors += 1
@@ -65,8 +66,15 @@ def predict_par(item_similar, movie_index, user_index, item_user_matrix, k):
         #     raise Exception('Suspicious neighbor rate; out of bound [1,5] !!')
 
         if neighbor_rate > 0:
+            sum_rates_rank += neighbor_rate
+
             sum_rates += neighbor_rate * nei_similarity
             sum_similarity += nei_similarity
+
+            # sum_rates += neighbor_rate
+            # sum_similarity += 1
+
+            # print 'rating', neighbor_rate
 
         if count_neighbors == k:
             break
@@ -82,7 +90,10 @@ def predict_par(item_similar, movie_index, user_index, item_user_matrix, k):
     #     raise Exception('prediction rates should NOT be larger than 5.0!! '
     #                     'but for user=%d and item=%d the prediction rate=%.3f.' % (user_index, movie_id, pred_rate))
 
-    return pred_rate
+    if is_ranking:
+        return sum_rates_rank
+    else:
+        return pred_rate
 
 
 def recommend_one(movie_index, top_n, item_similar, user_num, item_user_matrix, k):
@@ -99,6 +110,7 @@ def recommend_one(movie_index, top_n, item_similar, user_num, item_user_matrix, 
     # of this user has seen are considered as non-zero prediction rates.
     neighbors_users_index = find_neighbors_users_par(movie_index, item_similar,
                                                       user_num, item_user_matrix, k)
+    # print 'neighbor count', len(neighbors_users_index)
     # userId, user_similar, movies_num, userId_to_idx, user_item_matrix, k
     # neighbors_movies_index = []
 
@@ -118,7 +130,7 @@ def recommend_one(movie_index, top_n, item_similar, user_num, item_user_matrix, 
         # movie_id = idx_to_movieId[movie_index]
 
         if item_user_matrix[movie_index, user_index] == 0:
-            pred_rate = predict_par(item_similar, movie_index, user_index, item_user_matrix, k)
+            pred_rate = predict_par(item_similar, movie_index, user_index, item_user_matrix, k, True)
 
             # pred_rate = random.randint(1, 5)
 
@@ -212,6 +224,7 @@ class ItemKNN():
             userIndex = self.userId_to_idx[int(float(spline[0]))]
             movieIndex = self.movieId_to_idx[int(float(spline[1]))]
             self.item_user_matrix[movieIndex, userIndex] = float(spline[2])
+            # print 'rating', spline[2]
 
 
         # print 'Done!!'
@@ -223,7 +236,7 @@ class ItemKNN():
         print 'movie_index', movie_index
         print 'user index', user_index
 
-        rating = predict_par(item_similar, movie_index, user_index, self.item_user_matrix, self.k)
+        rating = predict_par(item_similar, movie_index, user_index, self.item_user_matrix, self.k, False)
         if rating == 0:
             # mean ratings of this item based on user-item index
             mean_rating_item = np.mean(self.item_user_matrix[movie_index][self.item_user_matrix[movie_index].nonzero()[0]])
@@ -250,6 +263,9 @@ class ItemKNN():
                 nei_index = indices[item_idx][nei]
                 sim = distances[item_idx][nei]
                 sim_list.append([nei_index, sim])
+
+                # print 'rating',
+
             item_similars[item_idx] = sim_list[:]
 
         return item_similars
@@ -328,7 +344,7 @@ class ItemKNN():
         # for user_id in self.all_users:
         _all_users = self.all_users
         # backend = "threading"
-        movie_recs_par = Parallel(n_jobs=15, backend="threading", verbose=0, max_nbytes="900M")\
+        movie_recs_par = Parallel(n_jobs=self.n_jobs, backend="threading", verbose=0, max_nbytes="100M")\
             (delayed(recommend_one)(movie_index, top_n, item_similar,
                                     self.user_num,
                                     self.item_user_matrix,
@@ -340,7 +356,7 @@ class ItemKNN():
         item_user_pred = np.zeros(self.item_user_matrix.shape, dtype=float)
 
 
-        pkl.dump(movie_recs_par, open(self.data_path + 'movie_recs.pkl', 'wb'))
+        # pkl.dump(movie_recs_par, open(self.data_path + 'movie_recs.pkl', 'wb'))
         for movie_pred in movie_recs_par:
             # print 'movie_pred[1]', movie_pred[1]
             # print np.array(movie_pred[1])
@@ -359,6 +375,6 @@ class ItemKNN():
 
         # for r in user_recs_par:
         #     user_recs[r[0]] = r[1]
-        pkl.dump(user_recs, open(self.user_recs_file_path, 'wb'))
+        pkl.dump(user_recs, open(rec_to_file_name, 'wb'))
         return user_recs
 

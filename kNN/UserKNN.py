@@ -38,10 +38,12 @@ def find_neighbors_items_par(userId, user_similar, movies_num, userId_to_idx, us
     return nonzero_movie_index
 
 
-def predict_par(user_similar, userId, movie_index, userId_to_idx, user_item_matrix, idx_to_movieId, k):
+def predict_par(user_similar, userId, movie_index, userId_to_idx, user_item_matrix, idx_to_movieId, k, is_ranking):
     sum_rates = 0.0
     sum_similarity = 0.0
     count_neighbors = 0
+    # this the librec approach for ranking
+    sum_rates_rank = 0
     for sim_list in user_similar[userId]:
         # sim_list = [[user_id, simVal], [...]]
         count_neighbors += 1
@@ -57,8 +59,15 @@ def predict_par(user_similar, userId, movie_index, userId_to_idx, user_item_matr
         #     raise Exception('Suspicious neighbor rate; out of bound [1,5] !!')
 
         if neighbor_rate > 0:
+            sum_rates_rank += neighbor_rate
+
             sum_rates += neighbor_rate * nei_similarity
             sum_similarity += nei_similarity
+
+            # print neighbor_rate, nei_similarity
+
+            # sum_rates += neighbor_rate
+            # sum_similarity += 1
 
         if count_neighbors == k:
             break
@@ -74,7 +83,10 @@ def predict_par(user_similar, userId, movie_index, userId_to_idx, user_item_matr
         raise Exception('prediction rates should NOT be larger than 5.0!! '
                         'but for user=%d and item=%d the prediction rate=%.3f.' % (userId, movieId, pred_rate))
 
-    return pred_rate
+    if is_ranking:
+        return sum_rates_rank
+    else:
+        return pred_rate
 
 
 def recommend_one(user_id, top_n, user_similar, movies_num, userId_to_idx, user_item_matrix,
@@ -91,6 +103,7 @@ def recommend_one(user_id, top_n, user_similar, movies_num, userId_to_idx, user_
     neighbors_movies_index = find_neighbors_items_par(user_id, user_similar,
                                                                  movies_num, userId_to_idx,
                                                                  user_item_matrix, k)
+    # print 'neighbors num', len(neighbors_movies_index)
     # userId, user_similar, movies_num, userId_to_idx, user_item_matrix, k
     # neighbors_movies_index = []
 
@@ -109,7 +122,7 @@ def recommend_one(user_id, top_n, user_similar, movies_num, userId_to_idx, user_
 
         if user_item_matrix[user_index, movie_index] == 0:
             pred_rate = predict_par(user_similar, user_id, movie_index, userId_to_idx,
-                                            user_item_matrix, idx_to_movieId, k)
+                                            user_item_matrix, idx_to_movieId, k, True)
 
             # predictions.append([movie_id, pred_rate])
             user_rates[movie_index] = pred_rate
@@ -195,9 +208,9 @@ class UserKNN():
             self.userId_to_idx[self.all_users[i]] = i
 
         self.user_item_matrix = np.zeros((self.user_num, self.movies_num), dtype=float)
+        f = open(file_path, 'r')
         if self.has_header:
-            f = open(file_path, 'r')
-        f.readline()
+            f.readline()
         for line in f:
             spline = line.split(',')
             userIndex = self.userId_to_idx[int(spline[0])]
@@ -209,7 +222,7 @@ class UserKNN():
 
     def user_similarity_sklearn(self, top_n):
         # minkowski
-        nbrs = NearestNeighbors(n_neighbors=top_n+1, algorithm='ball_tree', metric='euclidean', n_jobs=self.n_jobs).\
+        nbrs = NearestNeighbors(n_neighbors=top_n+1, algorithm='brute', metric='cosine', n_jobs=self.n_jobs).\
             fit(self.user_item_matrix)
         # indices for nearest neighbors and their distances
         distances, indices = nbrs.kneighbors(self.user_item_matrix)
@@ -234,7 +247,7 @@ class UserKNN():
         movie_index = self.movieId_to_idx[movie_id]
         user_index = self.idx_to_userId[user_id]
 
-        return predict_par(item_similar, movie_index, user_index, self.user_item_matrix)
+        return predict_par(item_similar, movie_index, user_index, self.user_item_matrix, False)
 
 
 
