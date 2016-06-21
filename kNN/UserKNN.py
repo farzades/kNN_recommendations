@@ -85,6 +85,7 @@ def predict_par(user_similar, userId, movie_index, userId_to_idx, user_item_matr
 
     if is_ranking:
         return sum_rates_rank
+        # return pred_rate
     else:
         return pred_rate
 
@@ -164,7 +165,9 @@ class UserKNN():
         self.n_jobs = n_jobs
         self.has_header = has_header
 
-        self.user_item_matrix_low = None
+        # user-user similarity
+        self.user_similars = None
+        # self.user_item_matrix_low = None
 
         # self.data_path = 'Diversity_2/user_knn/'
         # self.user_similar_file_path = self.data_path + 'user_similarity_matrix.pkl'
@@ -236,7 +239,7 @@ class UserKNN():
             fit(self.user_item_matrix)
         # indices for nearest neighbors and their distances
         distances, indices = nbrs.kneighbors(self.user_item_matrix)
-        user_similars = {}
+        self.user_similars = {}
         for user_idx in range(len(distances)):
             user_id = self.idx_to_userId[user_idx]
             sim_list = []
@@ -244,21 +247,26 @@ class UserKNN():
                 nei_id = self.idx_to_userId[indices[user_idx][nei]]
                 sim = distances[user_idx][nei]
                 sim_list.append([nei_id, sim])
-            user_similars[user_id] = sim_list[:]
+            self.user_similars[user_id] = sim_list[:]
 
         # don't save user_similar because we may run several instances of these in parallel.
         # only return these values
         # pkl.dump(user_similars, open(self.user_similar_file_path, 'wb'))
 
-        return user_similars
 
+    def predict(self, user_id, movie_id):
+        if movie_id in self.movieId_to_idx.keys():
+            movie_index = self.movieId_to_idx[movie_id]
+        else:
+            return self.global_mean
 
-    def predict(self, user_id, movie_id, user_similar):
-        movie_index = self.movieId_to_idx[movie_id]
-        user_index = self.idx_to_userId[user_id]
+        if user_id in self.userId_to_idx.keys():
+            user_index = self.userId_to_idx[user_id]
+        else:
+            return self.global_mean
 
         # user_similar, userId, movie_index, userId_to_idx, user_item_matrix, idx_to_movieId, k, is_ranking):
-        rating = predict_par(user_similar, user_id, movie_index, self.userId_to_idx, self.user_item_matrix,
+        rating = predict_par(self.user_similars, user_id, movie_index, self.userId_to_idx, self.user_item_matrix,
                              self.idx_to_movieId, self.k, False)
         if rating == 0:
 
@@ -327,7 +335,6 @@ class UserKNN():
         :return:
         """
 
-        user_similar = None
 
         if not is_sim_infile:
             # print 'Creating user-item matrix(numpy array)...'
@@ -338,12 +345,10 @@ class UserKNN():
                 # self.user_item_matrix_low = low_dim_similarity.user_svd(self.user_item_matrix,
                 #                                                         low_dim)
                 raise Exception("Implementation of SVD for dimensionality reduction has removed!!")
-            else:
-                self.user_item_matrix_low = self.user_item_matrix
 
             if is_sklearn_kNN_sim:
                 print 'Computing sk-learn kNN similarity...'
-                user_similar = self.user_similarity_sklearn(top_n)
+                self.user_similarity_sklearn(top_n)
                 # print 'Done!!'
 
             else:
@@ -353,8 +358,6 @@ class UserKNN():
 
         # print 'Loading user-user similarity from file...'
         # user_similar = pkl.load(open(self.user_similar_file_path, 'rb'))
-
-        return user_similar
 
 
     def find_neighbors_items(self, userId, user_similar):
@@ -379,14 +382,17 @@ class UserKNN():
         return nonzero_movie_index
 
 
-    def recommend_all(self, top_n, user_similar, rec_to_file_name):
-        print 'Item recommendation...'
-
+    def recommend_all(self, top_n, rec_to_file_name):
         """
             Get top_n recommendations for all users
         :param top_n:
         :return:
         """
+        print 'Item recommendation...'
+
+        if self.user_similars is None:
+            raise Exception('user-user similarity is None. Call compute_similarity_matrix first.')
+
         # print 'Loading user-item matrix(numpy array)...'
         # self.user_item_matrix = np.load(self.user_item_matrix_file_path + '.npy')
         # self.user_item_matrix = self.create_user_item_matrix()
@@ -399,7 +405,7 @@ class UserKNN():
         _all_users = self.all_users
         # backend = "threading"
         user_recs_par = Parallel(n_jobs=self.n_jobs, backend="threading", verbose=0, max_nbytes="100M")\
-            (delayed(recommend_one)(user_id, top_n, user_similar,
+            (delayed(recommend_one)(user_id, top_n, self.user_similars,
                                                                     self.movies_num, self.userId_to_idx,
                                                                     self.user_item_matrix,
                                                                     self.idx_to_movieId,

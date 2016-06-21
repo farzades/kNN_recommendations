@@ -94,6 +94,7 @@ def predict_par(item_similar, movie_index, user_index, item_user_matrix, k, is_r
         return sum_rates_rank
     else:
         return pred_rate
+        # return 3.6
 
 
 def recommend_one(movie_index, top_n, item_similar, user_num, item_user_matrix, k):
@@ -167,7 +168,10 @@ class ItemKNN():
         self.k = _k
         self.n_jobs = n_jobs
         self.has_header = has_header
+        self.coverage_err = 0
 
+        # item-item similarity
+        self.item_similars = None
         # self.item_user_matrix = None
         self.item_user_matrix_low = None
 
@@ -180,6 +184,7 @@ class ItemKNN():
         self.__read_data_into_matrix__(rating_file_path)
 
         self.global_mean = np.mean(self.item_user_matrix[np.nonzero(self.item_user_matrix)])
+        print 'Global mean rating', self.global_mean
 
         print 'Computing average rating of each user...'
         # average rating for each user INDEX
@@ -189,7 +194,6 @@ class ItemKNN():
             # mean_rating_item = np.mean(self.item_user_matrix[movie_index][self.item_user_matrix[movie_index].nonzero()[0]])
             avg = np.mean(self.item_user_matrix[:, u_idx][np.nonzero(self.item_user_matrix[:, u_idx])])
             self.user_mean_rating[u_idx] = avg
-
 
 
     def __read_data_into_matrix__(self, file_path):
@@ -240,14 +244,21 @@ class ItemKNN():
 
         # print 'Done!!'
 
-    def predict(self, user_id, movie_id, item_similar):
-        movie_index = self.movieId_to_idx[movie_id]
-        user_index = self.movieId_to_idx[user_id]
+    def predict(self, user_id, movie_id):
+        if movie_id in self.movieId_to_idx.keys():
+            movie_index = self.movieId_to_idx[movie_id]
+        else:
+            return self.global_mean
+
+        if user_id in self.userId_to_idx.keys():
+            user_index = self.userId_to_idx[user_id]
+        else:
+            return self.global_mean
 
         # print 'movie_index', movie_index
         # print 'user index', user_index
 
-        rating = predict_par(item_similar, movie_index, user_index, self.item_user_matrix, self.k, False)
+        rating = predict_par(self.item_similars, movie_index, user_index, self.item_user_matrix, self.k, False)
         if rating == 0:
 
             # print self.item_user_matrix[self.item_user_matrix[movie_index].nonzero()]
@@ -261,15 +272,13 @@ class ItemKNN():
 
         return rating
 
-
-
     def item_similarity_sklearn(self, top_n):
         # minkowski
-        nbrs = NearestNeighbors(n_neighbors=top_n+1, algorithm='ball_tree', metric='euclidean', n_jobs=self.n_jobs).\
+        nbrs = NearestNeighbors(n_neighbors=top_n+1, algorithm='brute', metric='cosine', n_jobs=self.n_jobs).\
             fit(self.item_user_matrix)
         # indices for nearest neighbors and their distances
         distances, indices = nbrs.kneighbors(self.item_user_matrix)
-        item_similars = {}
+        self.item_similars = {}
         for item_idx in range(len(distances)):
             # item_id = self.idx_to_movieId[item_idx]
             sim_list = []
@@ -281,12 +290,9 @@ class ItemKNN():
 
                 # print 'rating',
 
-            item_similars[item_idx] = sim_list[:]
-
-        return item_similars
+            self.item_similars[item_idx] = sim_list[:]
 
         # pkl.dump(item_similars, open(self.item_similar_file_path, 'wb'))
-
 
     def compute_similarity_matrix(self, low_dim, top_n, is_sim_infile, is_use_low_dim, is_sklearn_kNN_sim):
         """
@@ -318,7 +324,7 @@ class ItemKNN():
 
             if is_sklearn_kNN_sim:
                 print 'Computing sk-learn kNN similarity...'
-                item_similar = self.item_similarity_sklearn(top_n)
+                self.item_similarity_sklearn(top_n)
                 # print 'Done!!'
 
             else:
@@ -330,10 +336,7 @@ class ItemKNN():
             raise Exception('Nothing saved!! We do NOT save anything in file in this implementation.')
             # item_similar = pkl.load(open(self.item_similar_file_path, 'rb'))
 
-        return item_similar
-
-
-    def recommend_all(self, top_n, item_similar, rec_to_file_name):
+    def recommend_all(self, top_n, rec_to_file_name):
         print 'Item recommendation...'
 
         """
@@ -360,7 +363,7 @@ class ItemKNN():
         _all_users = self.all_users
         # backend = "threading"
         movie_recs_par = Parallel(n_jobs=self.n_jobs, backend="threading", verbose=0, max_nbytes="100M")\
-            (delayed(recommend_one)(movie_index, top_n, item_similar,
+            (delayed(recommend_one)(movie_index, top_n, self.item_similars,
                                     self.user_num,
                                     self.item_user_matrix,
                                     self.k)
