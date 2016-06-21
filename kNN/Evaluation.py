@@ -1,5 +1,6 @@
 import pandas as pd
-
+import numpy as np
+import math
 
 def precision_recall(recs, train, test, at_top_n):
     """
@@ -57,3 +58,50 @@ def precision_recall(recs, train, test, at_top_n):
     # print 'recall %.4f' % recall_total
 
     return precision_total, recall_total
+
+
+def rmse(preds, actuals):
+    """
+    Root Mean Square Error
+    preds and actuals should be paired that means the index of preds and actuals are the same for each (u,i)
+    :param preds: predicted ratings
+    :param actuals: actual ratings
+    :return: rmse
+    """
+    print ("Computing Root Mean Squared Error...")
+
+    if len(preds) != len(actuals):
+        raise Exception('The Length of predictions and actuals are not the same !!')
+
+    errors = []
+    for i in range(len(preds)):
+        errors.append((preds[i] - actuals[i])**2)
+
+    rmse_val = math.sqrt(np.mean(errors))
+    return rmse_val
+
+
+def mae(preds, actuals):
+    """
+    Mean Absolute Error
+    preds and actuals should be paired that means the index of preds and actuals are the same for each (u,i)
+    :param preds: predicted ratings
+    :param actuals: actual ratings
+    :return:
+    """
+    print ("Computing Mean Absolute Error...")
+
+    if len(preds) != len(actuals):
+        raise Exception('The Length of predictions and actuals are not the same !!')
+
+    errors = []
+    for i in range(len(preds)):
+        errors.append(math.fabs(preds[i] - actuals[i]))
+
+    mae_val = np.mean(errors)
+    return mae_val
+
+
+def coverage_error(preds, actuals):
+    pass
+    # coverage = (float(n) - float(self.cov_error)) / float(n)
