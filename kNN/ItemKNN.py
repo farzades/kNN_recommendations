@@ -6,6 +6,7 @@ import math
 from numpy import linalg as LA
 from sklearn.neighbors import NearestNeighbors
 from joblib import Parallel, delayed
+from scipy import sparse
 # import post_diversification
 # import evaluate
 
@@ -165,9 +166,52 @@ class ItemKNN():
         self.item_user_matrix_file_path = self.data_path + 'item_user_matrix'
 
         # Creating item-user matrix
-        self.__read_data_into_matrix__(rating_file_path)
+        # self.__read_data_into_matrix__(rating_file_path)
+        self.__read_data_into_sparse_matrix__(rating_file_path)
 
+    def __read_data_into_sparse_matrix__(self, file_path):
+        f = open(file_path, 'r')
+        user = []
+        item = []
+        rate = []
+        if self.has_header:
+            f.readline()
+        for line in f:
+            spline = line.split(',')
+            user.append(int(float(spline[0])))
+            item.append(int(float(spline[1])))
+            rate.append(float(spline[2]))
 
+        self.all_users = np.array(list(set(user)))  # Numpy array
+        self.all_movies = np.array(list(set(item)))  # Numpy array
+
+        self.user_num = len(self.all_users)
+        self.movies_num = len(self.all_movies)
+        print 'users num:', self.user_num
+        print 'items num:', self.movies_num
+
+        # map of index to movieId and vice versa
+        self.idx_to_movieId = {}
+        self.movieId_to_idx = {}
+        for i in range(self.movies_num):
+            self.idx_to_movieId[i] = self.all_movies[i]
+            self.movieId_to_idx[self.all_movies[i]] = i
+
+        self.idx_to_userId = {}
+        self.userId_to_idx = {}
+        for i in range(self.user_num):
+            self.idx_to_userId[i] = self.all_users[i]
+            self.userId_to_idx[self.all_users[i]] = i
+
+        user_indice = []
+        item_indice = []
+        for i in xrange(len(rate)):
+            user_indice.append(self.userId_to_idx[user[i]])
+            item_indice.append(self.movieId_to_idx[item[i]])
+
+        'Creating a matrix of zeros!'
+        self.item_user_matrix = sparse.csr_matrix((rate, (item_indice, user_indice)),
+                                                  (self.movies_num, self.user_num), dtype=float)
 
     def __read_data_into_matrix__(self, file_path):
 
@@ -202,7 +246,6 @@ class ItemKNN():
             self.idx_to_userId[i] = self.all_users[i]
             self.userId_to_idx[self.all_users[i]] = i
 
-
         self.item_user_matrix = np.zeros((self.movies_num, self.user_num), dtype=float)
         f = open(file_path, 'r')
         if self.has_header:
@@ -212,9 +255,6 @@ class ItemKNN():
             userIndex = self.userId_to_idx[int(float(spline[0]))]
             movieIndex = self.movieId_to_idx[int(float(spline[1]))]
             self.item_user_matrix[movieIndex, userIndex] = float(spline[2])
-
-
-        # print 'Done!!'
 
     def predict(self, user_id, movie_id, item_similar):
         movie_index = self.movieId_to_idx[movie_id]
@@ -232,8 +272,6 @@ class ItemKNN():
             print 'This is average rating.'
             return mean_rating_item
         return rating
-
-
 
     def item_similarity_sklearn(self, top_n):
         # minkowski
@@ -253,9 +291,7 @@ class ItemKNN():
             item_similars[item_idx] = sim_list[:]
 
         return item_similars
-
         # pkl.dump(item_similars, open(self.item_similar_file_path, 'wb'))
-
 
     def compute_similarity_matrix(self, low_dim, top_n, is_sim_infile, is_use_low_dim, is_sklearn_kNN_sim):
         """
@@ -301,7 +337,6 @@ class ItemKNN():
 
         return item_similar
 
-
     def recommend_all(self, top_n, item_similar, rec_to_file_name):
         print 'Item recommendation...'
 
@@ -338,7 +373,6 @@ class ItemKNN():
 
         # make item_user predictions matrix
         item_user_pred = np.zeros(self.item_user_matrix.shape, dtype=float)
-
 
         pkl.dump(movie_recs_par, open(self.data_path + 'movie_recs.pkl', 'wb'))
         for movie_pred in movie_recs_par:

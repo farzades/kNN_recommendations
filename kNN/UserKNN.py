@@ -5,6 +5,7 @@ import random
 import time
 from sklearn.neighbors import NearestNeighbors
 from joblib import Parallel, delayed
+from scipy import sparse
 # import post_diversification
 # import evaluate
 
@@ -28,7 +29,8 @@ def find_neighbors_items_par(userId, user_similar, movies_num, userId_to_idx, us
         nei_user_id = sim_list[0]
         # nei_similarity = sim_list[1]
         nei_user_index = userId_to_idx[nei_user_id]
-        sum_vec_items += user_item_matrix[nei_user_index]
+        # sum_vec_items += user_item_matrix[nei_user_index]
+        sum_vec_items += np.ravel(user_item_matrix[nei_user_index].todense())
 
         if count_neighbors == k:
             break
@@ -114,8 +116,7 @@ def recommend_one(user_id, top_n, user_similar, movies_num, userId_to_idx, user_
             # predictions.append([movie_id, pred_rate])
             user_rates[movie_index] = pred_rate
 
-
-    # copying movies from numpy array to sort and pick top_n ratings
+    'copying movies from numpy array to sort and pick top_n ratings'
     for movie_index in range(len(all_movies)):
         movie_id = idx_to_movieId[movie_index]
         predictions.append([movie_id, user_rates[movie_index]])
@@ -158,8 +159,56 @@ class UserKNN():
         # self.user_recs_file_path = self.data_path + 'user_recs.pkl'
         # self.user_item_matrix_file_path = self.data_path + 'user_item_matrix'
 
-        self.__read_data_into_matrix__(rating_file_path)
+        # self.__read_data_into_matrix__(rating_file_path)
+        self.__read_data_into_sparse_matrix__(rating_file_path)
 
+    def __read_data_into_sparse_matrix__(self, file_path):
+
+        f = open(file_path, 'r')
+        user = []
+        item = []
+        rate = []
+        if self.has_header:
+            f.readline()
+        for line in f:
+            spline = line.split(',')
+            user.append(int(spline[0]))
+            item.append(int(spline[1]))
+            rate.append(float(spline[2]))
+
+        self.all_users = np.array(list(set(user)))
+        self.all_movies = np.array(list(set(item)))
+
+        self.user_num = len(self.all_users)
+        self.movies_num = len(self.all_movies)
+        print 'users num:', self.user_num
+        print 'items num:', self.movies_num
+
+        # map of index to movieId and vice versa
+        self.idx_to_movieId = {}
+        self.movieId_to_idx = {}
+        for i in xrange(self.movies_num):
+            self.idx_to_movieId[i] = self.all_movies[i]
+            self.movieId_to_idx[self.all_movies[i]] = i
+
+        self.idx_to_userId = {}
+        self.userId_to_idx = {}
+        for i in xrange(self.user_num):
+            self.idx_to_userId[i] = self.all_users[i]
+            self.userId_to_idx[self.all_users[i]] = i
+
+        'Defining index arrays to fill in the sparse matrix'
+        user_indice = []
+        item_indice = []
+        for i in xrange(len(rate)):
+            user_indice.append(self.userId_to_idx[user[i]])
+            item_indice.append(self.movieId_to_idx[item[i]])
+
+        # self.user_item_matrix = np.zeros((self.user_num, self.movies_num), dtype=float)
+        self.user_item_matrix = sparse.csr_matrix((rate, (user_indice, item_indice)),
+                                                  (self.user_num, self.movies_num), dtype=float)
+
+        # np.save(self.item_user_matrix_file_path, self.user_item_matrix)
 
     def __read_data_into_matrix__(self, file_path):
 
@@ -203,9 +252,7 @@ class UserKNN():
             userIndex = self.userId_to_idx[int(spline[0])]
             movieIndex = self.movieId_to_idx[int(spline[1])]
             self.user_item_matrix[userIndex, movieIndex] = float(spline[2])
-
         # np.save(self.item_user_matrix_file_path, self.user_item_matrix)
-
 
     def user_similarity_sklearn(self, top_n):
         # minkowski
@@ -229,14 +276,11 @@ class UserKNN():
 
         return user_similars
 
-
     def predict(self, user_id, movie_id, item_similar):
         movie_index = self.movieId_to_idx[movie_id]
         user_index = self.idx_to_userId[user_id]
 
         return predict_par(item_similar, movie_index, user_index, self.user_item_matrix)
-
-
 
     # def predict(self, user_similar, userId, movie_index):
     #
@@ -277,7 +321,6 @@ class UserKNN():
     #
     #     return pred_rate
 
-
     def compute_similarity_matrix(self, low_dim, top_n, is_sim_infile, is_use_low_dim, is_sklearn_kNN_sim):
         """
         :param low_dim:
@@ -317,13 +360,11 @@ class UserKNN():
 
         # print 'Loading user-user similarity from file...'
         # user_similar = pkl.load(open(self.user_similar_file_path, 'rb'))
-
         return user_similar
-
 
     def find_neighbors_items(self, userId, user_similar):
 
-        sum_vec_items = np.zeros((self.movies_num), dtype=float)
+        sum_vec_items = np.zeros(self.movies_num, dtype=float)
         count_neighbors = 0
         for sim_list in user_similar[userId]:
             # sim_list = [[user_id, simVal], [...]]
@@ -341,7 +382,6 @@ class UserKNN():
         # non-zero movie indices of neighbors
         nonzero_movie_index = list(sum_vec_items.nonzero()[0])
         return nonzero_movie_index
-
 
     def recommend_all(self, top_n, user_similar, rec_to_file_name):
         print 'Item recommendation...'
